@@ -50,14 +50,9 @@ jobs:
       - name: Build Windows installer
         shell: pwsh
         run: |
-          $publish = 'never'
-          $isRelease = ($env:GITHUB_REF -like 'refs/tags/v*') -or ($env:GITHUB_REF -eq 'refs/heads/main') -or ($env:GITHUB_REF -eq 'refs/heads/master')
-          if ($isRelease -and $env:GITHUB_EVENT_NAME -ne 'pull_request') { $publish = 'always' }
-          Write-Host "electron-builder --win --publish $publish"
-          npx electron-builder --win --publish $publish
+          npx electron-builder --win --publish never
           if ($LASTEXITCODE -ne 0) { throw "electron-builder falló con código $LASTEXITCODE" }
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 
       - name: Verify installer
