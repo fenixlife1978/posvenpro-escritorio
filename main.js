@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
+const fs = require('fs');
+const os = require('os');
 const http = require('http');
-const dotenv = require('dotenv');
 const path = require('path');
 const { autoUpdater } = require('electron-updater');
 const { PosPrinter } = require('electron-pos-printer');
@@ -9,6 +10,44 @@ let mainWindow = null;
 let splashWindow = null;
 let nextServer = null;
 let nextApplication = null;
+let networkConfig = null;
+let networkConfigWindow = null;
+const NETWORK_PORT = 9002;
+
+function getNetworkInfo() {
+  const addresses = [];
+  for (const list of Object.values(os.networkInterfaces())) for (const entry of list || []) {
+    if (entry.family === 'IPv4' && !entry.internal) addresses.push(entry.address);
+  }
+  return { addresses: [...new Set(addresses)].sort(), port: NETWORK_PORT };
+}
+function readNetworkConfig() {
+  try {
+    const value = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'network.json'), 'utf8'));
+    if (value?.mode === 'server') return { mode: 'server' };
+    if (value?.mode === 'client' && /^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(String(value.serverIp || ''))) return { mode: 'client', serverIp: value.serverIp };
+  } catch {}
+  return null;
+}
+function openNetworkConfigWindow() {
+  return new Promise((resolve, reject) => {
+    networkConfigWindow = new BrowserWindow({ width: 560, height: 620, resizable: false, minimizable: false, maximizable: false, title: 'POSVEN Pro — Configuración de cajas', autoHideMenuBar: true, webPreferences: { preload: path.join(__dirname, 'preload.js'), nodeIntegration: false, contextIsolation: true } });
+    let settled = false;
+    ipcMain.once('network-config-saved', (_event, value) => { if (!settled) { settled = true; resolve(value); } });
+    networkConfigWindow.on('closed', () => { networkConfigWindow = null; if (!settled) reject(new Error('Debe configurar esta caja como servidor o conectarla a un servidor.')); });
+    networkConfigWindow.loadFile(path.join(__dirname, 'electron/network-config.html'));
+  });
+}
+async function ensureNetworkConfig() {
+  const existing = readNetworkConfig(); if (existing) return existing;
+  const chosen = await openNetworkConfigWindow();
+  if (!chosen || !['server', 'client'].includes(chosen.mode)) throw new Error('Configuración de red no válida.');
+  const config = chosen.mode === 'server' ? { mode: 'server' } : { mode: 'client', serverIp: String(chosen.serverIp || '').trim() };
+  if (config.mode === 'client' && !/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(config.serverIp)) throw new Error('La IP del servidor no es válida.');
+  fs.mkdirSync(app.getPath('userData'), { recursive: true });
+  fs.writeFileSync(path.join(app.getPath('userData'), 'network.json'), JSON.stringify(config, null, 2), { mode: 0o600 });
+  return config;
+}
 
 function fatalError(title, detail) {
   try {
@@ -59,7 +98,7 @@ function closeSplash() {
   }
 }
 
-function createWindow(serverPort) {
+function createWindow(targetUrl) {
   closeSplash();
 
   mainWindow = new BrowserWindow({
@@ -83,7 +122,7 @@ function createWindow(serverPort) {
   });
 
   const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
-  const appUrl = isDev ? 'http://localhost:9002' : 'http://127.0.0.1:' + serverPort;
+  const appUrl = isDev ? 'http://localhost:9002' : targetUrl;
   mainWindow.loadURL(appUrl).catch((err) => {
     fatalError('Error cargando POSVEN-PRO3', String(err));
   });
@@ -138,14 +177,9 @@ function createWindow(serverPort) {
 }
 
 async function startLocalNextServer() {
-  // La configuración se guarda fuera del instalador para no incrustar secretos.
-  const envPath = path.join(app.getPath('userData'), '.env');
-  dotenv.config({ path: envPath });
-  process.env.TURSO_MIGRATION_BUILD = '1';
-
-  if (!process.env.TURSO_DATABASE_URL || !process.env.TURSO_AUTH_TOKEN) {
-    console.warn('Faltan credenciales Turso en ' + envPath);
-  }
+  const dataDir = app.getPath('userData');
+  fs.mkdirSync(dataDir, { recursive: true });
+  process.env.POSVEN_SQLITE_PATH = path.join(dataDir, 'posven.sqlite');
 
   const next = require('next');
   nextApplication = next({ dev: false, dir: app.getAppPath() });
@@ -155,7 +189,7 @@ async function startLocalNextServer() {
   nextServer = http.createServer((request, response) => handler(request, response));
   await new Promise((resolve, reject) => {
     nextServer.once('error', reject);
-    nextServer.listen(0, '127.0.0.1', resolve);
+    nextServer.listen(NETWORK_PORT, '0.0.0.0', resolve);
   });
   const address = nextServer.address();
   if (!address || typeof address === 'string') throw new Error('No se pudo abrir el servidor local de POSVEN-PRO3.');
@@ -164,21 +198,20 @@ async function startLocalNextServer() {
 
 app.whenReady().then(async () => {
   try {
-    if (app.isPackaged) {
-      const port = await startLocalNextServer();
-      createWindow(port);
-    } else {
-      createWindow(0);
-    }
+    networkConfig = await ensureNetworkConfig();
+    if (app.isPackaged && networkConfig.mode === 'server') {
+      await startLocalNextServer();
+      const urls = getNetworkInfo().addresses.map(ip => `http://${ip}:${NETWORK_PORT}`);
+      createWindow(`http://127.0.0.1:${NETWORK_PORT}`);
+      if (urls.length) setTimeout(() => { if (!mainWindow?.isDestroyed()) dialog.showMessageBox(mainWindow, { type: 'info', title: 'Servidor POSVEN Pro activo', message: 'Esta PC es el servidor de las cajas.', detail: `Las otras cajas deben conectarse a una de estas direcciones:\n\n${urls.join('\n')}\n\nPuerto: ${NETWORK_PORT}\nMantenga esta PC encendida y conectada a la misma red.`, buttons: ['Entendido'] }); }, 1200);
+    } else if (app.isPackaged) createWindow(`http://${networkConfig.serverIp}:${NETWORK_PORT}`);
+    else createWindow('http://localhost:9002');
 
     app.on('activate', () => {
       if (mainWindow === null || BrowserWindow.getAllWindows().length === 0) {
-        if (app.isPackaged && nextServer?.address()) {
-          const address = nextServer.address();
-          createWindow(address && typeof address !== 'string' ? address.port : 0);
-        } else {
-          createWindow(0);
-        }
+        if (app.isPackaged && networkConfig?.mode === 'server' && nextServer?.address()) createWindow(`http://127.0.0.1:${NETWORK_PORT}`);
+        else if (app.isPackaged && networkConfig?.mode === 'client') createWindow(`http://${networkConfig.serverIp}:${NETWORK_PORT}`);
+        else createWindow('http://localhost:9002');
       }
     });
   } catch (error) {
@@ -221,6 +254,15 @@ ipcMain.on('print-ticket', (event, printData) => {
 });
 
 // Exponer versión de la app
-ipcMain.handle('get-app-version', () => {
-  return app.getVersion();
+ipcMain.handle('get-app-version', () => app.getVersion());
+ipcMain.handle('get-network-info', () => getNetworkInfo());
+ipcMain.handle('save-network-config', async (_event, config) => {
+  if (!config || !['server', 'client'].includes(config.mode)) throw new Error('Seleccione servidor o cliente.');
+  const normalized = config.mode === 'server' ? { mode: 'server' } : { mode: 'client', serverIp: String(config.serverIp || '').trim() };
+  if (normalized.mode === 'client' && !/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(normalized.serverIp)) throw new Error('Introduzca una dirección IPv4 válida.');
+  fs.mkdirSync(app.getPath('userData'), { recursive: true });
+  fs.writeFileSync(path.join(app.getPath('userData'), 'network.json'), JSON.stringify(normalized, null, 2), { mode: 0o600 });
+  ipcMain.emit('network-config-saved', null, normalized);
+  if (networkConfigWindow && !networkConfigWindow.isDestroyed()) networkConfigWindow.close();
+  return { ok: true };
 });
