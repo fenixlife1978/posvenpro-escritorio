@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRequestSessionId, getSessionUser } from '@/lib/auth/turso-auth';
+import { getRequestSessionId, getSessionUser } from '@/lib/auth/sqlite-auth';
 
 export const runtime = 'nodejs';
 
