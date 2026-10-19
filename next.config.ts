@@ -3,6 +3,7 @@ import type { NextConfig } from 'next';
 
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ['sql.js'],
   output: 'standalone',
   trailingSlash: true,
   distDir: '.next',
