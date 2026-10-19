@@ -5,11 +5,11 @@ Aplicación de punto de venta para Windows, construida con Next.js y Electron.
 ## Arquitectura de datos
 
 - **SQLite es la única base de datos operativa.** El archivo `posven.sqlite` se guarda en la carpeta de datos de usuario de Windows del equipo servidor.
-- No se requieren Turso, Firebase ni conexión a Internet para ventas y operaciones dentro de la red local.
+- No se requiere conexión a Internet para ventas y operaciones dentro de la red local.
 - El equipo servidor ejecuta la aplicación y expone la API en la red local por el puerto TCP `9002`. Las demás cajas se conectan a la IP IPv4 que muestra el servidor.
 - Las cajas cliente no abren ni comparten directamente el archivo SQLite: las operaciones pasan por la API del servidor, que mantiene la base de datos y aplica las transacciones.
 - El servidor debe permanecer encendido y conectado a la misma red. Se recomienda reservar su IP en el router.
-- Permita POSVEN Pro en el Firewall de Windows para conexiones privadas entrantes al puerto TCP 9002.
+- El instalador agrega una regla del Firewall de Windows limitada al perfil de red privada y al puerto TCP 9002.
 
 ## Primera configuración de las cajas
 
@@ -24,7 +24,7 @@ La configuración se guarda en `network.json` dentro de la carpeta de datos de u
 
 ## Datos, persistencia y respaldo
 
-El archivo principal es `posven.sqlite`, acompañado por archivos SQLite `-wal` y `-shm` mientras la base está abierta. No copie solo el archivo mientras la aplicación ejecuta transacciones. Cierre POSVEN Pro correctamente antes de copiar la base de datos y guarde copias periódicas en otro disco o ubicación protegida.
+El adaptador SQLite mantiene la base en memoria durante la ejecución y guarda cada escritura en `posven.sqlite` mediante un archivo temporal, sincronización a disco y sustitución atómica. No se generan archivos `-wal` ni `-shm`. Cierre POSVEN Pro correctamente antes de copiar la base de datos y guarde copias periódicas en otro disco o ubicación protegida.
 
 En una instalación con varias cajas, el servidor es la autoridad única. Si el servidor o la red se desconectan, las cajas cliente no deben registrar operaciones como si se hubieran guardado localmente.
 
