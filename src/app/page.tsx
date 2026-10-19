@@ -140,7 +140,7 @@ export default function LicoreriaPOS() {
         const cachedState = Store.get();
         const terminal = (cachedState.terminales || []).find((t: Terminal) => String(t.id) === String(saved.terminalId));
         // Solo se permite recuperar offline una caja previamente abierta.
-        // Una caja cerrada no puede abrirse ni generar un nuevo turno sin Turso.
+        // Una caja cerrada no puede abrirse ni generar un nuevo turno sin SQLite.
         if (!terminal || terminal.isCashOpen !== true) return false;
         const profile = {
           uid: String(saved.userId),
@@ -166,7 +166,7 @@ export default function LicoreriaPOS() {
       }
     };
 
-    const initializeFromTurso = async () => {
+    const initializeFromSqlite = async () => {
       try {
         const response = await fetch('/api/auth/session', { cache: 'no-store' });
         if (response.ok) {
@@ -184,13 +184,13 @@ export default function LicoreriaPOS() {
           setState(prev => ({ ...prev, user: profile, isAuthenticated: true } as AppState));
 
           if (currentUser.rol === 'cajero') {
-            // Turso es la única fuente de verdad de autenticación, usuarios y terminales.
-            const terminalsResponse = await fetch('/api/turso/store?table=terminales&limit=500', {
+            // SQLite es la única fuente de verdad de autenticación, usuarios y terminales.
+            const terminalsResponse = await fetch('/api/store?table=terminales&limit=500', {
               credentials: 'include',
               cache: 'no-store',
             });
             if (!terminalsResponse.ok) {
-              throw new Error('No se pudieron consultar los terminales en Turso.');
+              throw new Error('No se pudieron consultar los terminales en SQLite.');
             }
             const terminalsBody = await terminalsResponse.json();
             const terminals = Array.isArray(terminalsBody?.records) ? terminalsBody.records as Terminal[] : [];
@@ -205,7 +205,7 @@ export default function LicoreriaPOS() {
             }
 
             // La identidad operativa de un cajero queda fijada al terminal
-            // resuelto en Turso. No dependemos de identificadores heredados
+            // resuelto en SQLite. No dependemos de identificadores heredados
             // para volver a encontrar la caja después de un Z y una nueva
             // apertura.
             const profileWithTerminal = { ...profile, terminalId: String(myTerm.id) };
@@ -230,7 +230,7 @@ export default function LicoreriaPOS() {
             // Regla de continuidad de caja:
             // - Sin corte Z => isCashOpen=true: NO se crea una nueva apertura.
             //   Se recupera la jornada existente y se conservan sus ventas,
-            //   movimientos y demás registros persistidos en Turso.
+            //   movimientos y demás registros persistidos en SQLite.
             // - Con corte Z / caja cerrada => isCashOpen=false: se exige una
             //   nueva apertura antes de entrar al POS.
             //
@@ -269,10 +269,10 @@ export default function LicoreriaPOS() {
 
     };
 
-    initializeFromTurso();
+    initializeFromSqlite();
 
     const unsubscribeStore = Store.subscribe((dbUpdate: Partial<AppState>) => {
-      // La sesión autenticada por Turso es la autoridad para usuario/terminal.
+      // La sesión autenticada por SQLite es la autoridad para usuario/terminal.
       // El cache local del Store puede contener un usuario histórico y no debe
       // reemplazar el terminalId resuelto al iniciar sesión.
       const { user: _cachedUser, isAuthenticated: _cachedAuth, ...dbPatch } = dbUpdate as any;
@@ -566,7 +566,7 @@ export default function LicoreriaPOS() {
                   // ✅ GUARDAR LA APERTURA EN EL TERMINAL (caja) DE ESTE OPERADOR,
                   // no en un estado global. Cada caja abre/cierra su propia jornada.
                   const currentState = Store.get();
-                  // La identidad de caja viene de la sesión Turso resuelta al iniciar
+                  // La identidad de caja viene de la sesión SQLite resuelta al iniciar
                   // sesión. Store puede conservar un usuario cacheado antiguo, por lo
                   // que nunca debemos usarlo por encima de la identidad React actual.
                   const currentUser: any = user || (state as any).user || (currentState as any).user || null;
@@ -583,7 +583,7 @@ export default function LicoreriaPOS() {
                       .find(t => currentIds.includes(String(t.usuarioId || '')))?.id || ''
                   );
                   if (!termId) {
-                    alert('No se pudo identificar la caja asignada en Turso. No se puede abrir una caja global.');
+                    alert('No se pudo identificar la caja asignada en SQLite. No se puede abrir una caja global.');
                     return;
                   }
                   const terminalActual = (currentState.terminales || []).find(t => String(t.id) === String(termId));
@@ -609,7 +609,7 @@ export default function LicoreriaPOS() {
                   const updatedTerminals = (currentState.terminales || []).map(t =>
                     t.id === termId ? { ...t, fondoCajaHoyBS: bsValue, fondoCajaHoyUSD: usdValue, isCashOpen: true, cashData: session } : t
                   );
-                  // Mantener la identidad operativa de Turso al salir de la apertura.
+                  // Mantener la identidad operativa de SQLite al salir de la apertura.
                   // currentState puede contener un usuario cacheado antiguo sin terminalId;
                   // si lo copiamos completo a React, el POS pierde la caja inmediatamente
                   // después de confirmar la apertura y vuelve a mostrar "caja no disponible".
