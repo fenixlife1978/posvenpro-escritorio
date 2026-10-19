@@ -25,7 +25,7 @@ function readNetworkConfig() {
   try {
     const value = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'network.json'), 'utf8'));
     if (value?.mode === 'server') return { mode: 'server' };
-    if (value?.mode === 'client' && /^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(String(value.serverIp || ''))) return { mode: 'client', serverIp: value.serverIp };
+    if (value?.mode === 'client' && /^\d{1,3}(?:\.\d{1,3}){3}$/.test(String(value.serverIp || ''))) return { mode: 'client', serverIp: value.serverIp };
   } catch {}
   return null;
 }
@@ -43,7 +43,7 @@ async function ensureNetworkConfig() {
   const chosen = await openNetworkConfigWindow();
   if (!chosen || !['server', 'client'].includes(chosen.mode)) throw new Error('Configuración de red no válida.');
   const config = chosen.mode === 'server' ? { mode: 'server' } : { mode: 'client', serverIp: String(chosen.serverIp || '').trim() };
-  if (config.mode === 'client' && !/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(config.serverIp)) throw new Error('La IP del servidor no es válida.');
+  if (config.mode === 'client' && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(config.serverIp)) throw new Error('La IP del servidor no es válida.');
   fs.mkdirSync(app.getPath('userData'), { recursive: true });
   fs.writeFileSync(path.join(app.getPath('userData'), 'network.json'), JSON.stringify(config, null, 2), { mode: 0o600 });
   return config;
@@ -259,7 +259,7 @@ ipcMain.handle('get-network-info', () => getNetworkInfo());
 ipcMain.handle('save-network-config', async (_event, config) => {
   if (!config || !['server', 'client'].includes(config.mode)) throw new Error('Seleccione servidor o cliente.');
   const normalized = config.mode === 'server' ? { mode: 'server' } : { mode: 'client', serverIp: String(config.serverIp || '').trim() };
-  if (normalized.mode === 'client' && !/^\\d{1,3}(?:\\.\\d{1,3}){3}$/.test(normalized.serverIp)) throw new Error('Introduzca una dirección IPv4 válida.');
+  if (normalized.mode === 'client' && !/^\d{1,3}(?:\.\d{1,3}){3}$/.test(normalized.serverIp)) throw new Error('Introduzca una dirección IPv4 válida.');
   fs.mkdirSync(app.getPath('userData'), { recursive: true });
   fs.writeFileSync(path.join(app.getPath('userData'), 'network.json'), JSON.stringify(normalized, null, 2), { mode: 0o600 });
   ipcMain.emit('network-config-saved', null, normalized);
