@@ -126,7 +126,8 @@
       "runAfterFinish": true,
       "shortcutName": "PosVEN Pro",
       "deleteAppDataOnUninstall": false,
-      "displayLanguageSelector": false
+      "displayLanguageSelector": false,
+      "include": "build/installer.nsh"
     },
     "publish": [
       {
