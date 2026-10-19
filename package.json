@@ -85,6 +85,7 @@
     "files": [
       "main.js",
       "preload.js",
+      "electron/**/*",
       ".next/**/*",
       "public/**/*",
       "package.json",
