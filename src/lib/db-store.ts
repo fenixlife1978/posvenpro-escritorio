@@ -61,7 +61,7 @@ const COLLECTIONS: Record<string, string> = {
 const OPERATIONS_COLLECTION = 'operaciones';
 
 // ============================================================
-// PUENTE DE OPERACIONES CRÍTICAS A TURSO
+// PUENTE DE OPERACIONES CRÍTICAS A SQLite
 // ------------------------------------------------------------
 // SQLite solo toma el control cuando sus credenciales existen en el servidor.
 // Si no está configurado (HTTP 503), el flujo existente de servidor SQLite continúa.
