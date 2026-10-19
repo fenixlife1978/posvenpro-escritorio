@@ -74,3 +74,18 @@ jobs:
           path: dist/*.exe
           if-no-files-found: error
           retention-days: 14
+
+      - name: Commit synchronized package lock on main
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          if (git diff --quiet -- package-lock.json) {
+            Write-Host 'package-lock.json ya está sincronizado.'
+          } else {
+            git config user.name 'github-actions[bot]'
+            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+            git add package-lock.json
+            git commit -m 'chore: sync SQLite dependency lockfile [skip ci]'
+            git push
+          }
