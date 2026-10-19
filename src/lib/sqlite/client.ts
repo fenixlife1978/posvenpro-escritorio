@@ -67,10 +67,14 @@ async function executeDirect(statement: SqliteStatement) {
   const args = (statement.args || []).map(value => value === undefined ? null : value) as any[];
   try {
     if (statement.wantRows !== false && prepared.getColumnNames().length > 0) {
+      const cols = prepared.getColumnNames().map(name => ({ name }));
       prepared.bind(args);
       const rows: Record<string, unknown>[] = [];
       while (prepared.step()) rows.push(prepared.getAsObject());
-      return { rows, cols: prepared.getColumnNames().map(name => ({ name })), affected_row_count: 0 };
+      const result = { rows, cols, affected_row_count: db.getRowsModified(), last_insert_rowid: String(db.exec('SELECT last_insert_rowid() AS id')[0]?.values?.[0]?.[0] ?? 0) };
+      const isReadOnly = /^(SELECT|EXPLAIN)\\b/i.test(sql) || /^PRAGMA\\s+(table_info|index_list|index_info|foreign_key_list|database_list|compile_options|query_only)\\b/i.test(sql);
+      if (!isReadOnly && !context.getStore()?.inTransaction) await persist(db);
+      return result;
     }
   } finally { prepared.free(); }
 
