@@ -80,7 +80,8 @@ jobs:
         shell: pwsh
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          if (git diff --quiet -- package-lock.json) {
+          git diff --quiet -- package-lock.json
+          if ($LASTEXITCODE -eq 0) {
             Write-Host 'package-lock.json ya está sincronizado.'
           } else {
             git config user.name 'github-actions[bot]'
